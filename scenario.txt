@@ -1,0 +1,14 @@
+I'm going to give you a scenario and I want you to use all known CaaS constraints, risks, and assumptions, and current DevOps strategy,
+including plans to use release train
+to output a md file that layouts out how the code works its way through Dev, SIT, Stage and then Production.
+
+I want you to view this from the perspective of 3 roles: 
+1 business owner who wants to optimize for delivery of new features and timeline predictability.
+2 developer who needs to fix defects found in Dev, or SIT, or Stage. Assume it is optimal to find defects in lower environments
+3 release engineer who has to manage promotion of code through the environments and is responsible for the statbility of the production deloyment
+
+
+As a tenant devloper I want to develop a brand new AEM component called ABC. I start by creating a feature/abc branch off develop and develop the 
+ABC component on my local and do all the validaion I can do. I then submit an MR from feature/abc to the develop branch. After the merge is completed
+I as the developer am ready to test in Dev 
+
