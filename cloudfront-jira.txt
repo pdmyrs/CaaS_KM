@@ -1,0 +1,299 @@
+
+CLOUDFRONT CHANGES TO SUPPORT AEMaaCS MIGRATION
+
+1. PURPOSE
+   This strategy defines the CloudFront changes required to support an incremental migration from AEM AMS to AEMaaCS while minimizing risk to current AEM projects that must continue to deploy fixes and new capabilities to current state AMS production sites. 
+       And it deals with how to keep workplace on ams while the rest of our sties move to caas
+CURRENT STATE
+CloudFront is the single front door for web traffic.
+You said CloudFront also routes to other non-AEM origins, and you use /personal-investing/* style SEO prefixes. That’s fine—but it means you’ll still have one behavior per first-segment site when different sites go to different origins.
+
+
+
+
+
+CloudFront routes to a single AMS AEM Publish origin (ex: troweprice-dev-65.adobecqms.net).
+Routing is currently performed using behavior path-patterns. 
+
+here's a list of the common path-pattern usages
+One is as the  first segment of the uri stem can be associated with a website.
+example :
+path-pattern = /personal-investing/* 
+Site URL =  https://www.troweprice.com/personal-investing/index.html
+
+
+
+		
+		
+		
+		
+		
+		
+		
+1. MIGRATION GOAL
+2. 2.3 A new AEMaaCS Publish origin exists (Fastly publish domain like pXXXXXX-eXXXXXXX.adobeaemcloud.com).
+   3.1 Support dual-origins during transition (AMS and AEMaaCS) without breaking:
+- same-domain cookies
+- session continuity
+- CSRF token flows
+- i18n translations
+- client-side apps that call AEM endpoints (clientlibs, APIs, GraphQL, etc.)
+- 
+
+
+4. KEY CONSTRAINTS AND RISKS
+   4.1 SAME DOMAIN AND SESSION SENSITIVITY
+   Some AEM endpoints assume same-origin behavior and rely on cookies/session state. If CloudFront routes pages to one origin but routes CSRF/session endpoints to another, flows can fail in subtle ways.
+
+
+
+4.3 SHARED AEM PATHS THAT BREAK PREFIX ROUTING ASSUMPTIONS
+Even if main pages are under /workplace/*, many dependencies are not:
+
+- /libs/granite/* (used for /libs/granite/csrf/token.json)
+- /libs/cq/i18n/* (unknown how this is used 
+- /libs/*
+- /libs/*
+- /etc/designs/<tenant>
+- /etc.clientlibs/<tenant>
+- /content/dam/*
+- /graphql/*
+- /api/* (if applicable)
+
+
+
+5. ROUTING MODEL
+   
+
+
+
+
+Prompt>>>
+
+
+I have the following CloudFront path-patterns on AMS and I am migrating to AEMaaCS. how should I create my new path-patterns that align with my new situation. note, i use a lot of the first segment in path, example /personal-investing as site names to give my URLs SEO ranking. All off these are on the same CloudFront distribution and the domain is www.troweprice.com/ I want to simplify and get rid of path-patterns i don't need.
+
+/retirement-plan-services/*
+/product-content-library/*
+/personal-investing/part2b/*
+/personal-investing/*
+/money-market/*
+/libs/granite/*
+/libs/cq/i18n/*
+/libs/cq/*
+/institutional/*
+/individual-investor/*
+/graphql/execute.json/*
+/financial-intermediary/us/*
+/financial-intermediary/*
+/etc/designs/trp-library/*
+/etc/designs/money-market/*
+/etc/designs/fai/*
+/etc/designs/emailcampaigns/*
+/etc/designs/*
+/etc.clientlibs/iinvestor/*
+/etc.clientlibs/ide/*
+/etc.clientlibs/global-retail/*
+/etc.clientlibs/gdx/*
+/etc.clientlibs/fai/*
+/etc.clientlibs/clientlibs/*
+/etc.clientlibs/*
+/etc*/workplace*
+/es/*
+/es
+/enterprise/*
+/en/*
+/en
+/de/*
+/de
+/corporate/*
+/content/workplace/emailcampaigns*
+/content/trp-sites/*
+/content/trp-library/*
+/content/trp-ecl/services/public/*
+/content/troweplan/*
+/content/trowecorp/*
+/content/tpd/*
+/content/retirement-plan-services/*
+/content/product-content-library/*
+/content/money-market/*
+/content/institutional/*
+/content/individual-investor/*
+/content/iinvestor/*
+/content/ide/*
+/content/global-retail/*
+/content/gdx/*
+/content/forms/*
+/content/fai/*
+/content/experience-fragments/trp-sites/*
+/content/experience-fragments/retirement-plan-services/*
+/content/dam/trp-sites/*
+/content/dam/trp-library/*
+/content/dam/trp-common-assets/*
+/content/dam/troweplan/*
+/content/dam/trowecorp/*
+/content/dam/tpd/*
+/content/dam/retirement-plan-services/*
+/content/dam/money-market/*
+/content/dam/iinvestor/*
+/content/dam/ide/*
+/content/dam/global-retail/*
+/content/dam/emailcampaigns/*
+/content/campaigns/*
+/content/*
+/contentworkplace/
+/campaigns/*
+/aem-services/trp/fai/*
+/aem-services/iinvestor/*
+/aem-services/clx/*
+/aem-services/*
+
+
+
+User Stories.
+
+Got it. Here’s the revised Jira-ready story that adds the requirement to design a new, deduplicated set of CloudFront behaviors that route to the CaaS origin and remove redundant paths for operational soundness.
+Title Identify AMS-dependent CloudFront paths, define a deduplicated CaaS behavior set, and implement context-aware routing for common paths
+User Story As a platform engineer, I need to:
+- Inventory and document all current CloudFront behavior paths that must continue routing to AMS.
+- Design a new, minimal, and standardized set of CloudFront behaviors that route to the CaaS origin, removing redundant/legacy path patterns to simplify operations and reduce risk.
+- Identify common paths that exist across AMS and CaaS sites and ensure they route by context to the correct origin (on CaaS sites, common paths must route to CaaS; on AMS-only sites, they must route to AMS), so that when remaining TRP sites cut over to CloudFront behaviors that route to CaaS, AMS-dependent traffic remains functional, common paths are correctly routed by site, and the resulting CloudFront configuration is operationally sound, maintainable, and free of redundant behaviors.
+Business Context / Rationale
+- All existing AEM CloudFront behaviors currently route traffic to the AMS origin.
+- TRP sites are migrating to CloudFront behaviors that route to a new CaaS origin.
+- Workplace and RPS Microsites (troweplan) will not migrate to CaaS with the rest of the TRP sites and must remain on AMS.
+- Some paths still rely on AMS (legacy apps, AEM-specific assets, integrations, or services not yet migrated).
+- Common paths may exist across both AMS and CaaS sites; they must route correctly based on site/host context.
+- Current distributions have redundant/overlapping behavior patterns that increase operational complexity and the risk of precedence errors; a deduplicated, canonical behavior set for CaaS is needed.
+Scope
+- In scope:
+	- Discovery and classification of current behaviors and paths by host, environment, and function.
+	- Definition of a canonical, deduplicated behavior set for CaaS routing (including a default catch-all and specific high-priority patterns).
+	- Identification of AMS-dependent paths that must remain on AMS.
+	- Context-aware routing for common paths: ensure CaaS sites use CaaS for these, AMS-only sites use AMS.
+	- Required viewer-request logic (CloudFront Functions/Lambda@Edge), behavior precedence, origin selection, cache and header policies.
+	- Deprecation/cleanup plan to remove redundant behaviors safely.
+- Out of scope:
+	- Application feature work or migration of back-end services.
+	- Non-CloudFront traffic; DNS changes beyond what the routing plan requires.
+Deliverables
+- Inventory of existing CloudFront behaviors and path patterns, mapped to origins and hosts.
+- Classified list of AMS-dependent paths that must remain on AMS, with rationale and owners.
+- Canonical “CaaS behavior set”:
+	- A deduplicated list of path patterns and rules that should route to the CaaS origin, with precedence order and rationale.
+	- Standardized patterns for common/static assets, APIs, auth flows, and a catch-all.
+- Context routing rules for common paths per host/site (ensuring CaaS sites route common paths to CaaS).
+- Routing matrix (hostname + path pattern + method/headers/cookies as needed -> origin), showing final behavior order and how overlaps are resolved.
+- Change set for CloudFront (behaviors, origins, policies, and any Functions/Lambda@Edge), delivered as IaC.
+- Validation plan, including log-based coverage analysis, synthetic tests, request replay, and monitoring/alerting.
+- Deprecation and rollback plan, including a temporary fallback rule and a mapping of old behaviors to new ones.
+Examples of candidate path categories to evaluate (for deduplication and routing)
+- AEM-specific (likely AMS): /content/, /content/dam/, /etc.clientlibs/, /libs/, /etc/, /bin/, /system/*
+- Shared/static (host-dependent): /assets/, /images/, /fonts/, /scripts/, /styles/*
+- App/API: /api/, /graphql/, /services/, /search/
+- Auth/session: /login, /logout, /sso/, /callback/
+- Site-level: /robots.txt, /sitemap.xml, /favicon.ico, error pages (/404, /500)
+- Method-/header-sensitive: POST/PUT endpoints, OPTIONS (CORS), signed URLs, cookie-dependent content
+- Hostname context: trp.com, troweprice.com vs troweplan.com and other RPS/Workplace microsite hosts
+Assumptions
+- Logs, configs, and SME input will be sufficient to identify AMS-dependent and CaaS-ready paths within the analysis window.
+- A smaller, standardized behavior set can cover current traffic without functional regressions, using explicit exceptions where required.
+- Hostname- and path-based routing will handle most cases; where necessary, CloudFront Functions/Lambda@Edge can evaluate headers/cookies/query params.
+- AMS and CaaS origins will both remain available during testing and phased rollout.
+- Security/WAF, header, and TLS policies can be consistently applied per behavior/origin.
+- Workplace and RPS microsites will remain on AMS until explicitly scheduled for migration.
+Risks and Mitigations
+- Risk: Removing “redundant” behaviors breaks edge cases that depended on subtle differences (cache keys, headers, methods, redirects).
+	- Mitigation: Diff and cluster existing behaviors by policy; build parity tests; replay representative logs; stage changes behind flags; phased removal after verification.
+- Risk: Overlapping path patterns or incorrect precedence cause misrouting.
+	- Mitigation: Adopt most-specific-first ordering; document precedence; add unit tests for matcher logic; validate with request replay and synthetic tests.
+- Risk: Common paths on CaaS sites inadvertently route to AMS (or vice versa).
+	- Mitigation: Classify hosts by origin; add explicit common-path rules per host; verify via origin-tracing headers and logs.
+- Risk: AMS-dependent paths are missed due to low traffic or time-bound usage.
+	- Mitigation: Analyze extended log windows across business cycles; solicit SME input; implement temporary fallback-to-AMS rule for unmatched cases; add alerts.
+- Risk: Auth and session flows break due to cross-origin cookies, SameSite, or domain scoping.
+	- Mitigation: Align cookie attributes and domains; test across browsers; coordinate with IAM/SSO teams.
+- Risk: CORS differences across origins break API calls.
+	- Mitigation: Normalize CORS at edge or per behavior; test OPTIONS and multi-method flows.
+- Risk: Cache policy differences cause stale or inconsistent content.
+	- Mitigation: Standardize cache policies in the canonical set; include necessary query/headers/cookies in cache keys; plan invalidations.
+- Risk: Operational limits or complexity in CloudFront (behaviors, origins, functions) hinder rollout.
+	- Mitigation: Track service limits and seek quota increases if needed; prefer fewer, general patterns + targeted exceptions; centralize logic where appropriate.
+Acceptance Criteria
+- A documented, approved inventory of AMS-dependent paths and common paths, with owners and rationale.
+- A canonical CaaS behavior set is defined, reviewed, and approved by Platform, CaaS, and Security, and:
+	- Replaces redundant/overlapping patterns with a minimal, standardized set.
+	- Includes explicit precedence, cache/security/header policies, and a safe catch-all.
+- For hosts classified as CaaS sites, all designated common paths route to CaaS; for AMS-only sites (e.g., Workplace/RPS), those common paths route to AMS. Verified via logs, headers, and synthetic tests.
+- CloudFront changes are delivered as IaC, deployed to non-prod, validated via test plan and request replay, then canaried in prod with monitoring.
+- Redundant behaviors are removed in production after successful canary and monitoring period; rollback is documented and rehearsed.
+- No critical regressions in routing, auth, CORS, or performance after full cutover; stakeholder sign-off received.
+Dependencies
+- AMS/AEM team for dispatcher rules, redirects/rewrites, and path ownership
+- CaaS team for endpoint readiness, path taxonomy, and header/cache policies
+- Security/WAF for policy alignment and header standards
+- Networking/SRE for CloudFront changes, monitoring, and rollback
+- App owners for legacy integrations and special-case paths
+- Access to CloudFront, WAF, AMS dispatcher, and observability logs
+Proposed Approach
+- Discover
+	- Export last 60–90 days of CloudFront and AMS logs; enumerate paths by host, method, status, and volume.
+	- Extract current behavior definitions, cache/origin/header policies, and precedence.
+	- Interview SMEs to capture low-traffic or time-based paths.
+- Analyze and Deduplicate
+	- Cluster and compare overlapping patterns; identify subsumed and duplicate rules.
+	- Propose a canonical path taxonomy and behavior set for CaaS (smallest set covering the same traffic), with a clear catch-all.
+	- Identify exceptions that must remain specific (auth, APIs with special headers, non-GET methods).
+- Design
+	- Produce the routing matrix and final behavior order for AMS vs CaaS, including context routing for common paths.
+	- Determine if CloudFront Functions/Lambda@Edge are needed to reduce behavior count while preserving correctness.
+- Implement
+	- Build CloudFront changes as IaC; deploy to non-prod; run test plan and request replay to verify parity and coverage.
+- Validate and Cutover
+	- Canary in production with origin-tracing headers and dashboards for route verification.
+	- Remove redundant behaviors incrementally after successful monitoring windows.
+	- Maintain rollback readiness and temporary fallback rules during the transition.
+If you want, I can add a concise “canonical CaaS behavior set” template you can populate with your proposed path patterns and attach directly to the Jira ticket.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+User Story (Jira format)
+Summary
+Identify CloudFront behavior paths that must continue routing to AMS after TRP sites cut over to CaaS.
+Description
+As a platform engineer,
+I want to identify all current CloudFront behavior paths that must continue routing to AMS,
+so that when the remaining TRP sites cut over to CloudFront behaviors that route to CaaS, any required AMS-dependent paths remain functional and are not inadvertently broken.
+Business Context / Rationale
+- Several existing CloudFront behaviors currently route traffic to AMS.
+- TRP sites are being migrated to CloudFront behaviors that route to CaaS.
+- Some paths may still rely on AMS (e.g., legacy apps, integrations, or services not yet migrated to CaaS).
+- We must explicitly identify and track these paths to avoid service disruption after the main cutover.
+Acceptance Criteria
+- [ ] A complete inventory of all current CloudFront behaviors that route to AMS is produced.
+- [ ] For each behavior, the path pattern, target origin, and associated TRP site/application are documented.
+- [ ] AMS-dependent paths that must remain on AMS post-cutover are clearly identified and approved by the relevant application owners.
+- [ ] A documented list (e.g., Confluence page or attached file) is created and linked in this ticket, indicating:
+	- Paths that must continue routing to AMS
+	- Paths that can safely be migrated to CaaS or retired
+- [ ] The CloudFront configuration changes required to preserve AMS routing for these paths after the TRP site cutover are defined and ready for implementation (in a separate change ticket).
+Out of Scope
+- Implementing CloudFront changes (covered by separate Jira issue[s]).
+- Migrating applications from AMS to CaaS.
+Dependencies / Notes
+- Requires access to CloudFront distribution configuration for TRP sites.
+- Coordination with TRP application owners and AMS/CaaS teams to validate which paths must remain on AMS.
+---
+If you’d like, I can also adapt this into your team’s specific Jira template (e.g., add Epic link, components, labels, or a task checklist).
